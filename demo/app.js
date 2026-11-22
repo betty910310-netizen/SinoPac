@@ -448,7 +448,8 @@ function kidPay(d) {
       <div class="qr">${QR}</div>
       <div class="col" style="align-items:center;gap:4px;border-top:1px dashed #CDD5E0;padding-top:10px;width:100%">${BARCODE}<span class="xs">手機條碼載具 /MK8+K2Q・自動記帳</span></div>
     </div>
-    <div class="cempty" style="text-align:center;font-size:12px;color:var(--muted)">（示範：用右側控制台模擬店家掃碼）</div>`;
+    <span class="xs" style="text-align:center">示範：點選下方店家，模擬店員掃碼</span>
+    ${MERCHANTS.filter(m => m.id !== 'shoe').map(m => `<button class="btn b-line" data-act="scan" data-arg="${m.id}">${m.store}：${m.name} $${fmt(m.amt)}</button>`).join('')}`;
   const m = p.m;
   if (p.step === 'blocked') return `
     <div class="card center fade" style="padding:24px 16px">${ic('shield', 'width:40px;height:40px;color:var(--gray)')}
@@ -1246,7 +1247,9 @@ const app = document.getElementById('app');
 function render() {
   const scrolls = {};
   app.querySelectorAll('[data-sk]').forEach(el => { scrolls[el.dataset.sk] = el.scrollTop; });
-  app.innerHTML = viewSide() + viewMain(derive());
+  const d = derive();
+  app.innerHTML = `<div class="phonecol"><div class="lbl-phone">孩子端・小安的手機（${state.grown ? 18 : state.age} 歲）</div>${viewKid(d)}</div>
+    <div class="phonecol"><div class="lbl-phone">家長端・媽媽的手機</div>${viewParent(d)}</div>`;
   app.querySelectorAll('[data-sk]').forEach(el => { if (scrolls[el.dataset.sk]) el.scrollTop = scrolls[el.dataset.sk]; });
 }
 app.addEventListener('click', e => {
@@ -1256,15 +1259,10 @@ app.addEventListener('click', e => {
   if (fn) fn(el.dataset.arg);
 });
 app.addEventListener('input', e => { if (e.target.id === 'check-input' && state.check) state.check.text = e.target.value; });
-document.addEventListener('keydown', e => {
-  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
-  if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); ACT.nextCh(); }
-  if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); ACT.prevCh(); }
-});
 function fit() {
-  const sc = Math.min(innerWidth / 1440, innerHeight / 900);
-  app.style.transform = `translate(${(innerWidth - 1440 * sc) / 2}px, ${(innerHeight - 900 * sc) / 2}px) scale(${sc})`;
+  const W = app.offsetWidth, H = app.offsetHeight, sc = Math.min(innerWidth / W, innerHeight / H);
+  app.style.transform = `translate(${(innerWidth - W * sc) / 2}px, ${(innerHeight - H * sc) / 2}px) scale(${sc})`;
 }
 addEventListener('resize', fit);
-fit();
 render();
+fit();

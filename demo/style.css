@@ -1,7 +1,7 @@
 /* MMA Kids 互動 Demo
    1440×900 舞台，依視窗等比縮放（投影、筆電、手機都能完整顯示） */
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:#E7ECF2}
+html,body{margin:0;height:100%;overflow:hidden;background:#EEF2F6}
 body{font-family:'Noto Sans TC','Microsoft JhengHei','PingFang TC',system-ui,sans-serif;color:#1F2A37;-webkit-font-smoothing:antialiased}
 button,input,textarea{font-family:inherit;color:inherit}
 button{cursor:pointer}
@@ -18,7 +18,7 @@ svg{display:block}
   --ink:#1F2A37; --muted:#556070; --line:#E3E8EF; --paper:#F7F8FA;
 }
 
-.app{position:absolute;top:0;left:0;width:1440px;height:900px;background:#EEF2F6;display:flex;overflow:hidden;transform-origin:0 0}
+.app{position:absolute;top:0;left:0;width:840px;height:820px;padding:24px 30px;gap:60px;background:#EEF2F6;display:flex;justify-content:center;align-items:flex-start;overflow:hidden;transform-origin:0 0}
 
 /* ---------- 左側章節列 ---------- */
 .side{width:330px;flex:none;background:#fff;border-right:1px solid var(--line);padding:20px 18px 18px;display:flex;flex-direction:column;gap:12px}
