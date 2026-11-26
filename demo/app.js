@@ -28,13 +28,18 @@ const CH = [
   {id:'sum',      n:'終', t:'對永豐的價值',       summary:true}
 ];
 
+// jar：付款時從哪個罐子扣（need＝需要罐、want＝想要罐）
 const MERCHANTS = [
-  {id:'tea',  store:'全家便利商店', name:'珍珠奶茶', amt:70,   cat:'飲食',     items:[['珍珠奶茶', 70]]},
-  {id:'bus',  store:'台北捷運公車', name:'公車',     amt:15,   cat:'交通',     items:null},
-  {id:'game', store:'遊戲平台',     name:'遊戲點數', amt:300,  cat:'遊戲儲值', items:null},
-  {id:'shoe', store:'運動用品店',   name:'跑步鞋',   amt:1200, cat:'服飾',     items:[['跑步鞋', 1200]]}
+  {id:'tea',  store:'全家便利商店', name:'珍珠奶茶', amt:70,   cat:'飲食',     jar:'want', items:[['珍珠奶茶', 70]]},
+  {id:'bus',  store:'台北捷運公車', name:'公車',     amt:15,   cat:'交通',     jar:'need', items:null},
+  {id:'game', store:'遊戲平台',     name:'遊戲點數', amt:300,  cat:'遊戲儲值', jar:'want', items:null},
+  {id:'shoe', store:'運動用品店',   name:'跑步鞋',   amt:1200, cat:'服飾',     jar:'want', items:[['跑步鞋', 1200]]}
 ];
-const REMIND_CATS = ['飲食', '娛樂'];
+const JAR_INFO = {
+  save:{t:'儲蓄', d:'存進夢想基金'},
+  need:{t:'需要', d:'交通、文具、午餐'},
+  want:{t:'想要', d:'飲料、零食、娛樂'}
+};
 const MAX_REMIND = 2;
 
 const LESSONS = [
@@ -81,7 +86,7 @@ const GIFTS = [
 ];
 const TASK_TPL = [
   {id:'antiScam', t:'防詐小達人',     cat:'學堂', ref:'看完「假買家詐騙」影片，並答對 3 題防詐題', link:'學堂進度自動同步'},
-  {id:'noOver',   t:'這週不超支',     cat:'預算', ref:'本週消費 ≤ 每週預算',                       link:'錢包自動計算'},
+  {id:'noOver',   t:'這週不超支',     cat:'預算', ref:'本週消費不超過需要罐＋想要罐',               link:'錢包自動計算'},
   {id:'tagAll',   t:'每一筆都想一下', cat:'記帳', ref:'這週每筆消費都標記需要／想要',               link:'錢包自動計算'},
   {id:'compare',  t:'比價小幫手',     cat:'親子', ref:'買東西前比 2 家，告訴爸媽為什麼選這家',     link:'孩子文字回報'},
   {id:'twoLess',  t:'上完 2 堂學堂',  cat:'學堂', ref:'任選 2 堂課並答對小測驗',                   link:'學堂進度自動同步'}
@@ -106,24 +111,32 @@ const LEVELS = {
   monthly: {t:'每月分類總額', kid:'每月分類總額'}
 };
 const DEFAULT_LEVEL = age => age <= 12 ? 'detail' : age <= 15 ? 'store' : 'monthly';
-const JAR_PRESETS = [[20, 70, 10], [30, 60, 10], [50, 40, 10]];
-const BUDGETS = [180, 240, 300];
+// 三罐子比例：[儲蓄, 需要, 想要]
+const JAR_PRESETS = [[30, 35, 35], [20, 40, 40], [40, 30, 30]];
+const ALLOW_OPTS = [500, 800, 1000];
+const DAY_OPTS = ['週一', '週三', '週五', '週日'];
+const TIME_OPTS = ['07:00', '12:00', '18:00'];
+const WEEKCAP_OPTS = [100, 200, 300];
+const GOALCAP_OPTS = [300, 600, 900];
+const WEEK_NEED_SPENT = 60;   // 示範：本週已從需要罐花掉的錢（早餐 $45＋公車 $15）
 const NOTE_CHIPS = ['我們之後一起再開始', '這個月先暫停一下', '你存得很棒，繼續加油'];
 const DECLINE_NOTE = {withdraw:'先存到目標再說喔！', big:'我們先一起討論看看', payee:'這個買家怪怪的，先不要轉'};
 
 // ================= 狀態 =================
 function initState() {
-  return {
-    ch:'home', kidView:'home', parView:'allowance', walletTab:'log',
+  const s = {
+    // setup：'parent'（媽媽先設定）→ 'kid'（小安設定三罐子）→ null（開始使用）
+    setup:'parent', jarDraft:null,
+    ch:'home', kidView:'home', parView:'overview', walletTab:'log',
     age:12, viewLevel:'detail',
-    // 日常錢包
-    balance:320, budget:240, weekSpent:60, jars:[20, 70, 10], shareJar:40,
-    allowance:{on:true, amount:300, paused:false, pauseFor:''},
+    // 日常錢包：need＝需要罐、want＝想要罐（兩罐合計＝可以用的錢）；儲蓄罐＝夢想基金的「我存的」
+    need:0, want:0, jars:[30, 35, 35],
+    allowance:{on:true, amount:500, day:'週一', time:'07:00', paused:false, pauseFor:''},
     family:['外婆', '外公'],
     tx:[
       {id:1, when:'今天', store:'7-ELEVEN', name:'早餐', amt:45, cat:'飲食', tag:'need', src:'carrier', items:[['鮪魚飯糰', 30], ['豆漿', 15]]},
       {id:2, when:'今天', store:'台北捷運公車', name:'公車', amt:15, cat:'交通', tag:'need', src:'card'},
-      {id:3, when:'週一', store:'家長零用錢', name:'零用錢入帳', amt:300, cat:'收入', income:true},
+      {id:3, when:'週一', store:'家長零用錢', name:'零用錢入帳', amt:500, cat:'收入', income:true},
       {id:4, when:'上週', store:'書局', name:'自動鉛筆', amt:35, cat:'文具', tag:null, src:'carrier', items:[['自動鉛筆', 35]]},
       {id:5, when:'上週', store:'夜市', name:'雞排', amt:70, cat:'飲食', tag:'want', src:'manual'}
     ],
@@ -131,7 +144,7 @@ function initState() {
     pay:null, remindToday:0,
     // 夢想基金與配對
     goal:{name:'球鞋基金', target:1800, saved:820},
-    match:{ratio:1, weekCap:50, goalCap:500, sources:{saveAtPay:true, sundayLeft:true, gift:false},
+    match:{ratio:1, weekCap:200, goalCap:600, sources:{saveAtPay:true, sundayLeft:true, gift:false},
            heldTotal:300, heldThisWeek:0, paused:false, keepHeld:true, note:''},
     goalReady:false, celebrate:null, goalsDone:0, saveCount:0,
     deposit:null, bigIn:null, pauseSheet:null,
@@ -155,6 +168,19 @@ function initState() {
     // 同步
     feed:[], alerts:[], kidToast:'', parToast:''
   };
+  fillWeek(s);
+  return s;
+}
+// 依零用錢與三罐子比例，算出每次入帳分到各罐的金額
+function portions(s = state) {
+  const a = s.allowance.amount, save = Math.round(a * s.jars[0] / 100), need = Math.round(a * s.jars[1] / 100);
+  return {save, need, want:a - save - need};
+}
+// 示範起點：本週一的零用錢已依設定入帳，需要罐已花掉早餐＋公車
+function fillWeek(s) {
+  const p = portions(s);
+  s.need = Math.max(0, p.need - WEEK_NEED_SPENT); s.want = p.want;
+  const t = s.tx.find(x => x.id === 3); if (t) t.amt = s.allowance.amount;
 }
 let state = initState();
 const timers = {};
@@ -231,6 +257,13 @@ const BARCODE = `<svg width="200" height="36" viewBox="0 0 100 20" preserveAspec
 
 // ================= 計算 =================
 function heldAll() { return state.match.heldTotal + state.match.heldThisWeek; }
+const bal = () => state.need + state.want;   // 可以用的錢＝需要罐＋想要罐
+// 從指定罐子扣錢；不夠時從另一個罐子補（呼叫前需確認兩罐合計足夠）
+function take(amt, first = 'want') {
+  const s = state, other = first === 'want' ? 'need' : 'want';
+  const a = Math.min(s[first], amt);
+  s[first] -= a; s[other] = Math.max(0, s[other] - (amt - a));
+}
 function pct(saved, held) { return Math.min(100, Math.round((saved + held) / state.goal.target * 100)); }
 // 依家長設定計算這筆存款可以配對多少（孩子端不顯示公式）
 function matchFor(amount, srcKey) {
@@ -242,15 +275,14 @@ function derive() {
   const s = state, held = heldAll();
   const progress = pct(s.goal.saved, held);
   const remain = Math.max(0, s.goal.target - s.goal.saved - held);
-  const weekLeft = Math.max(0, s.budget - s.weekSpent);
-  const perWeek = Math.round(s.allowance.on ? s.allowance.amount * s.jars[0] / 100 : 0) + (s.match.paused ? 0 : s.match.weekCap);
+  const perWeek = (s.allowance.on && !s.allowance.paused ? portions().save : 0) + (s.match.paused ? 0 : s.match.weekCap);
   const spends = s.tx.filter(t => !t.income);
   const need = spends.filter(t => t.tag === 'need').reduce((a, t) => a + t.amt, 0);
   const want = spends.filter(t => t.tag === 'want').reduce((a, t) => a + t.amt, 0);
   const tagged = need + want;
   const weekTx = s.tx.filter(t => t.when !== '上週');
   return {
-    held, progress, remain, weekLeft, perWeek,
+    held, progress, remain, perWeek,
     eta: remain === 0 ? '已達成！' : perWeek ? `照現在的速度，約 ${Math.ceil(remain / perWeek)} 週後達成` : '持續存錢，就會越來越近',
     needPct: tagged ? Math.round(need / tagged * 100) : 0,
     untagged: spends.filter(t => !t.tag).length,
@@ -365,6 +397,11 @@ const kidTitles = {home:'嗨，小安', pay:'付款', dream:'夢想', task:'我�
 function viewKid(d) {
   const s = state;
   if (s.grown) return `<div class="ph"><div class="scr">${kidGrown()}</div></div>`;
+  if (s.setup) return `<div class="ph"><div class="scr">
+    <div class="top"><div class="col"><span class="app-n">MMA KIDS｜初次設定</span><span class="ttl">${s.setup === 'kid' ? '分配我的零用錢' : '嗨，小安'}</span></div><div class="avatar">安</div></div>
+    ${kidSetup()}
+    ${s.kidToast ? `<div class="toast" role="status">${ic('bell')}<span>${esc(s.kidToast)}</span></div>` : ''}
+  </div></div>`;
   const v = s.kidView;
   const views = {home:kidHome, pay:kidPay, dream:kidDream, task:kidTask, school:kidSchool, wallet:kidWallet};
   const tab = (id, label, icon) => `<button class="tab ${v === id || (id === 'home' && v === 'pay') ? 'on' : ''}" data-act="kv" data-arg="${id}">${ic(icon)}${label}</button>`;
@@ -405,17 +442,15 @@ function kidHome(d) {
           <button class="btn b-gray" style="min-height:40px;font-size:13px" data-act="bigSkip">先不要</button>
         </div></div>` : ''}
     <button class="card c-green" data-act="kv" data-arg="wallet">
-      ${al ? `<span class="sm t-green" style="font-weight:700">本週還能花</span>
-        <span class="big t-green">$${fmt(d.weekLeft)}</span>
-        <div class="track thin"><div class="seg green" style="width:${(d.weekLeft / s.budget * 100).toFixed(1)}%"></div></div>
-        <span class="xs">每週預算 $${fmt(s.budget)}・可以用的錢 $${fmt(s.balance)}</span>`
-      : `<span class="sm t-green" style="font-weight:700">可以用的錢</span><span class="big t-green">$${fmt(s.balance)}</span>`}
+      <span class="sm t-green" style="font-weight:700">可以用的錢</span>
+      <span class="big t-green">$${fmt(bal())}</span>
+      <span class="xs">需要罐＋想要罐${al && !s.allowance.paused ? `・每${s.allowance.day} ${s.allowance.time} 零用錢入帳` : ''}</span>
     </button>
     <button class="btn b-green" data-act="openPay">${ic('phone')}出示付款碼</button>
     <div class="jars">
-      <button class="jar save" data-act="kv" data-arg="dream"><span class="jn t-blue">儲蓄 ${s.jars[0]}%</span><span class="jp t-blue">${d.progress}%</span><span class="jd">存進${s.goal.name}</span></button>
-      <button class="jar spend" data-act="kv" data-arg="wallet"><span class="jn t-green">消費 ${s.jars[1]}%</span><span class="jp t-green">$${fmt(s.balance)}</span><span class="jd">可以用的錢</span></button>
-      <div class="jar share"><span class="jn t-pink">分享 ${s.jars[2]}%</span><span class="jp t-pink">$${fmt(s.shareJar)}</span><span class="jd">送禮或捐款（之後開放）</span></div>
+      <button class="jar save" data-act="kv" data-arg="dream"><span class="jn t-blue">儲蓄</span><span class="jp t-blue">$${fmt(s.goal.saved)}</span><span class="jd">${s.jars[0]}%・存進${s.goal.name}</span></button>
+      <button class="jar need" data-act="kv" data-arg="wallet"><span class="jn t-green">需要</span><span class="jp t-green">$${fmt(s.need)}</span><span class="jd">${s.jars[1]}%・${JAR_INFO.need.d}</span></button>
+      <button class="jar want" data-act="kv" data-arg="wallet"><span class="jn t-yellow">想要</span><span class="jp t-yellow">$${fmt(s.want)}</span><span class="jd">${s.jars[2]}%・${JAR_INFO.want.d}</span></button>
     </div>
     <button class="card c-blue" data-act="kv" data-arg="dream">
       <div class="row sb" style="width:100%"><span class="h3 t-blue">${ic('star', 'width:16px;height:16px;display:inline;vertical-align:-3px')} ${s.goal.name}</span><span class="h3 t-blue">${d.progress}%</span></div>
@@ -464,14 +499,14 @@ function kidPay(d) {
     <button class="btn b-green" data-act="sendApproval" data-arg="big">送出給爸媽</button>
     <button class="btn b-line" data-act="kv" data-arg="home">取消</button>`;
   if (p.step === 'choice') {
-    const me = m.amt, mom = matchFor(me, 'saveAtPay');
+    const me = m.amt, mom = matchFor(me, 'saveAtPay');   // 「存起來」：這筆錢從罐子移進夢想，不付款
     const newP = pct(s.goal.saved + me, d.held + mom);
     return `
       <div class="card"><span class="sm">${m.store}</span><span class="mid">${m.name} $${m.amt}</span></div>
       <span class="h3" style="font-size:17px">這 $${m.amt} 你想怎麼用？</span>
       <button class="paycard a" data-act="payBuy">
         <div class="row sb"><span class="big2">買下去</span><span class="sm" style="font-weight:700">${s.goal.name.replace('基金', '')} ${d.progress}%</span></div>
-        <span class="xs">夢想進度不變</span></button>
+        <span class="xs">夢想進度不變・${JAR_INFO[m.jar].t}罐 $${fmt(s[m.jar])} → $${fmt(Math.max(0, s[m.jar] - me))}</span></button>
       <button class="paycard b" data-act="paySave">
         <div class="row sb"><span class="big2 t-blue">存起來</span><span class="h3 t-blue">${d.progress}% → ${newP}%</span></div>
         ${dreamBar(d, {me, mom}, true)}
@@ -479,8 +514,19 @@ function kidPay(d) {
         <span class="h3 t-blue" style="font-size:13px">夢想進度 +${newP - d.progress}%</span></button>
       <span class="xs" style="text-align:center">不會擋你付款，選一個就好</span>`;
   }
+  if (p.step === 'borrow') {
+    const other = m.jar === 'want' ? 'need' : 'want', short = m.amt - s[m.jar];
+    return `
+    <div class="card fade"><span class="sm">${m.store}</span><span class="mid">${m.name} $${fmt(m.amt)}</span></div>
+    <div class="card c-yellow"><span class="h3">${JAR_INFO[m.jar].t}罐不夠喔</span>
+      <span class="sm" style="line-height:1.6">${JAR_INFO[m.jar].t}罐只剩 $${fmt(s[m.jar])}，還差 $${fmt(short)}。要用${JAR_INFO[other].t}罐的錢補嗎？</span>
+      <span class="xs">${JAR_INFO[other].t}罐目前 $${fmt(s[other])}，補完剩 $${fmt(s[other] - short)}</span></div>
+    <button class="btn b-green" data-act="payBorrow">用${JAR_INFO[other].t}罐補 $${fmt(short)}</button>
+    <button class="btn b-line" data-act="kv" data-arg="home">先不要買</button>`;
+  }
   if (p.step === 'confirm') return `
-    <div class="card center fade" style="padding:22px 16px"><span class="sm">${m.store}</span><span class="mid">${m.name}</span><span class="big">$${fmt(m.amt)}</span></div>
+    <div class="card center fade" style="padding:22px 16px"><span class="sm">${m.store}</span><span class="mid">${m.name}</span><span class="big">$${fmt(m.amt)}</span>
+      <span class="xs">從${JAR_INFO[m.jar].t}罐付款（目前 $${fmt(s[m.jar])}）</span></div>
     <button class="btn b-green" data-act="payBuy">確認付款</button>`;
   if (p.step === 'tag') return `
     <div class="card center fade" style="padding:20px 16px">${ic('check', 'width:40px;height:40px;color:var(--greenT)')}
@@ -491,7 +537,7 @@ function kidPay(d) {
         <button class="btn b-blue" style="min-height:58px;font-size:17px" data-act="tagPay" data-arg="need">需要</button>
         <button class="btn b-yellow" style="min-height:58px;font-size:17px" data-act="tagPay" data-arg="want">想要</button></div></div>`;
   return `
-    <div class="card fade"><span class="h3">記好了！</span><span class="sm" style="line-height:1.6">本週還能花 $${fmt(d.weekLeft)}。</span></div>
+    <div class="card fade"><span class="h3">記好了！</span><span class="sm" style="line-height:1.6">需要罐還剩 $${fmt(s.need)}・想要罐還剩 $${fmt(s.want)}</span></div>
     <button class="btn b-green" data-act="kv" data-arg="home">回首頁</button>
     <button class="btn b-line" data-act="kv" data-arg="wallet">看我的錢包</button>`;
 }
@@ -593,12 +639,13 @@ function kidWallet(d) {
   const head = `<div class="chips" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr))">
     <button class="chip ${tab === 'log' ? 'on' : ''}" data-act="walletTab" data-arg="log">收支紀錄</button>
     <button class="chip ${tab === 'set' ? 'on' : ''}" data-act="walletTab" data-arg="set">預算設定</button></div>`;
-  if (tab === 'set') return head + `
-    <div class="card"><span class="h3">三罐子分配</span><span class="xs">零用錢入帳時自動分配</span>
-      <div class="col" style="gap:6px;margin-top:4px">${JAR_PRESETS.map((p, i) => `<button class="opt ${String(s.jars) === String(p) ? 'right' : ''}" data-act="setJars" data-arg="${i}">儲蓄 ${p[0]}%・消費 ${p[1]}%・分享 ${p[2]}%</button>`).join('')}</div>
-      <span class="xs" style="line-height:1.6">儲蓄罐的錢會直接存進「${s.goal.name}」。</span></div>
-    <div class="card"><span class="h3">每週預算</span><span class="xs">一週打算花多少，超過前會提醒你</span>
-      <div class="chips">${BUDGETS.map(b => `<button class="chip ${s.budget === b ? 'on' : ''}" data-act="setBudget" data-arg="${b}">$${b}</button>`).join('')}</div></div>`;
+  if (tab === 'set') {
+    const dr = s.jarDraft || s.jars, same = String(dr) === String(s.jars), sum = dr[0] + dr[1] + dr[2];
+    return head + `
+    <div class="card"><span class="h3">三罐子比例</span><span class="xs">零用錢入帳時自動分配，下次入帳開始套用</span>
+      ${jarEditor(dr)}
+      <button class="btn b-green" data-act="saveJars" ${same || sum !== 100 ? 'disabled style="opacity:.5"' : ''}>儲存比例</button></div>`;
+  }
   const rows = ['今天', '週一', '上週'].map(w => {
     const list = s.tx.filter(t => t.when === w);
     if (!list.length) return '';
@@ -626,6 +673,69 @@ function kidWallet(d) {
     <div class="card c-blue"><span class="h3">每週 30 秒回顧</span><span class="sm">這週最值得的一筆花費是？</span>
       ${rv ? `<div class="fb ok fade">你選了「${rv.store}・${rv.name}」，已分享給媽媽。</div>`
         : `<div class="chips">${s.tx.filter(t => !t.income && t.when !== '上週').map(t => `<button class="chip s" data-act="review" data-arg="${t.id}">${t.name} $${t.amt}</button>`).join('')}</div>`}</div>`;
+}
+
+// ---------- 三罐子比例調整（初次設定與錢包共用） ----------
+function jarEditor(dr) {
+  const a = state.allowance.on ? state.allowance.amount : 0, sum = dr[0] + dr[1] + dr[2];
+  const save = Math.round(a * dr[0] / 100), need = Math.round(a * dr[1] / 100), amts = [save, need, a - save - need];
+  const row = (k, i) => `<div class="jrow ${k}">
+      <span class="col"><span class="jt ${k === 'save' ? 't-blue' : k === 'need' ? 't-green' : 't-yellow'}">${JAR_INFO[k].t}</span>
+        <span class="jamt">${a && sum === 100 ? `每週 $${fmt(amts[i])}・` : ''}${JAR_INFO[k].d}</span></span>
+      <span class="step"><button class="sbtn2" aria-label="${JAR_INFO[k].t}減少" data-act="jarStep" data-arg="${i}|-5" ${dr[i] <= 0 ? 'disabled' : ''}>−</button>
+        <span class="pc">${dr[i]}%</span>
+        <button class="sbtn2" aria-label="${JAR_INFO[k].t}增加" data-act="jarStep" data-arg="${i}|5" ${dr[i] >= 100 ? 'disabled' : ''}>+</button></span></div>`;
+  return `<div class="chips">${JAR_PRESETS.map((p, i) => `<button class="chip s ${String(dr) === String(p) ? 'on' : ''}" data-act="jarPreset" data-arg="${i}">${p.join('／')}</button>`).join('')}</div>
+    <div class="col" style="gap:6px">${['save', 'need', 'want'].map(row).join('')}</div>
+    <div class="total ${sum === 100 ? 'ok' : 'no'}">${sum === 100 ? '合計 100%' : `合計 ${sum}%，要剛好 100% 才能儲存`}</div>
+    <span class="xs" style="line-height:1.6">儲蓄罐的錢會直接存進你的夢想「${state.goal.name}」。</span>`;
+}
+
+// ---------- 初次設定 ----------
+function kidSetup() {
+  const s = state;
+  if (s.setup === 'parent') return `<div class="welcome fade">
+      <div class="ring green">${ic('star')}</div>
+      <span style="font-size:22px;font-weight:800">歡迎使用 MMA Kids</span>
+      <span class="sm" style="line-height:1.7">媽媽正在 DAWHO 幫你設定零用錢<br>設定好之後，換你分配三個罐子</span>
+      <span class="banner gray" style="margin-top:6px">${ic('clock')}<span>等媽媽設定中…</span></span></div>`;
+  const a = s.allowance, dr = s.jarDraft || s.jars, sum = dr[0] + dr[1] + dr[2];
+  return `<div class="body" data-sk="kid-setup">
+    <div class="card c-green"><span class="sm t-green" style="font-weight:700">媽媽每週給你</span>
+      <span class="mid t-green">$${fmt(a.amount)}</span><span class="xs">每${a.day} ${a.time} 入帳，會照你設定的比例分進三個罐子</span></div>
+    <span class="h3" style="font-size:17px">你想怎麼分？</span>
+    ${jarEditor(dr)}
+    <button class="btn b-green" data-act="kidSetupDone" ${sum !== 100 ? 'disabled style="opacity:.5"' : ''}>開始使用</button>
+    <span class="xs" style="text-align:center">之後可以在「錢包 › 預算設定」修改</span></div>`;
+}
+function parSetup() {
+  const s = state, a = s.allowance, m = s.match;
+  if (s.setup === 'kid') return `<div class="body" data-sk="par-setup">
+    <div class="card c-green center fade" style="padding:20px 16px">${ic('check', 'width:36px;height:36px;color:var(--greenT)')}
+      <span class="h3" style="font-size:17px">設定完成</span><span class="sm">換小安在 MMA Kids 分配三個罐子</span></div>
+    <div class="card" style="gap:0">
+      <div class="lr"><span>每週零用錢</span><b>$${fmt(a.amount)}</b></div>
+      <div class="lr"><span>轉帳時間</span><b>每${a.day} ${a.time}</b></div>
+      <div class="lr"><span>配對比例</span><b class="t-pink">1:${m.ratio}</b></div>
+      <div class="lr"><span>每週配對上限</span><b>$${fmt(m.weekCap)}</b></div>
+      <div class="lr"><span>這個夢想的配對上限</span><b>$${fmt(m.goalCap)}</b></div></div>
+    <span class="banner gray">${ic('clock')}<span>等小安設定中…</span></span>
+    <button class="link" data-act="setupBack">回去修改</button></div>`;
+  const chips = (opts, cur, act, lbl = v => `$${fmt(v)}`) => `<div class="chips">${opts.map(v => `<button class="chip ${cur === v ? 'on' : ''}" data-act="${act}" data-arg="${v}">${lbl(v)}</button>`).join('')}</div>`;
+  return `<div class="body" data-sk="par-setup">
+    <span class="sm" style="line-height:1.6">幫小安開啟 MMA Kids，先設定這幾項，之後都可以再改。</span>
+    <div class="card"><span class="h3">每週零用錢</span>${chips(ALLOW_OPTS, a.amount, 'setAllow')}</div>
+    <div class="card"><span class="h3">轉帳時間</span>
+      ${chips(DAY_OPTS, a.day, 'setDay', v => v)}${chips(TIME_OPTS, a.time, 'setTime', v => v)}
+      <span class="xs">從媽媽的 DAWHO 自動轉入小安的 MMA</span></div>
+    <div class="card"><span class="h3">夢想配對比例</span>
+      <div class="seg3" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[[1, '1:1'], [0.5, '1:0.5'], [2, '1:2']].map(([r, l]) => `<button class="chip ${m.ratio === r ? 'on' : ''}" data-act="setRatio" data-arg="${r}">${l}</button>`).join('')}</div>
+      <span class="sm t-pink" style="font-weight:700">小安存 $1，你配 $${m.ratio}</span></div>
+    <div class="card"><span class="h3">配對上限</span>
+      <span class="xs">每週最多配</span>${chips(WEEKCAP_OPTS, m.weekCap, 'setWeekCap')}
+      <span class="xs">這個夢想最多配</span>${chips(GOALCAP_OPTS, m.goalCap, 'setGoalCap')}
+      <span class="xs" style="line-height:1.6">配對款先圈存在你的帳戶，小安達標才撥入。零用錢自動存進儲蓄罐的部分不配對。</span></div>
+    <button class="btn b-green" data-act="parSetupDone">完成設定，換小安設定</button></div>`;
 }
 
 // ---------- 18 歲 ----------
@@ -664,17 +774,17 @@ function kidOverlays(d) {
   if (s.giftList) return `<div class="overlay"><div class="sheet">
       <div class="row sb"><span class="h3" style="font-size:18px">我的禮物</span><button class="iconbtn" aria-label="關閉" data-act="closeGifts">${ic('x')}</button></div>
       <div class="grid2" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${s.gifts.map(id => { const g = giftOf(id); return `<div class="card c-yellow center">${ic(g.icon, 'width:28px;height:28px;color:var(--yellowT)')}<span class="h3 t-yellow">${g.t}</span></div>`; }).join('')}</div></div></div>`;
-  if (s.deposit) { const dp = s.deposit, amt = dp.amt, srcMap = {sundayLeft:'零用錢剩下的', gift:'紅包', family:'親友給的', other:'其他'};
+  if (s.deposit) { const dp = s.deposit, amt = dp.amt, srcMap = {sundayLeft:'罐子剩下的', gift:'紅包', family:'親友給的', other:'其他'};
     const mk = dp.src === 'family' ? 'gift' : dp.src === 'other' ? null : dp.src;
     const mom = matchFor(amt, mk);
     return `<div class="overlay"><div class="sheet">
       <div class="row sb"><span class="h3" style="font-size:18px">存一筆進${s.goal.name}</span><button class="iconbtn" aria-label="關閉" data-act="closeDeposit">${ic('x')}</button></div>
-      <span class="xs">從可以用的錢轉入（目前 $${fmt(s.balance)}）</span>
-      <div class="chips">${[50, 100, 200, 500].map(a => `<button class="chip ${amt === a ? 'on' : ''}" data-act="depAmt" data-arg="${a}" ${a > s.balance ? 'disabled style="opacity:.4"' : ''}>$${a}</button>`).join('')}</div>
+      <span class="xs">先從想要罐轉入，不夠再用需要罐（想要 $${fmt(s.want)}・需要 $${fmt(s.need)}）</span>
+      <div class="chips">${[50, 100, 200, 500].map(a => `<button class="chip ${amt === a ? 'on' : ''}" data-act="depAmt" data-arg="${a}" ${a > bal() ? 'disabled style="opacity:.4"' : ''}>$${a}</button>`).join('')}</div>
       <span class="xs">這筆錢是？（選填）</span>
       <div class="chips">${Object.entries(srcMap).map(([k, v]) => `<button class="chip s ${dp.src === k ? 'on' : ''}" data-act="depSrc" data-arg="${k}">${v}</button>`).join('')}</div>
       <div class="card c-blue" style="padding:10px 14px"><span class="sm t-blue" style="font-weight:700">進度 ${d.progress}% → ${pct(s.goal.saved + amt, d.held + mom)}%${mom ? `　媽媽陪你存 +$${mom}` : ''}</span></div>
-      <button class="btn b-blue" data-act="doDeposit" ${amt > s.balance ? 'disabled style="opacity:.5"' : ''}>存進去</button></div></div>`; }
+      <button class="btn b-blue" data-act="doDeposit" ${amt > bal() ? 'disabled style="opacity:.5"' : ''}>存進去</button></div></div>`; }
   if (s.doneSheet) return `<div class="overlay"><div class="sheet">
       <div class="row sb"><span class="h3" style="font-size:18px">我做完了</span><button class="iconbtn" aria-label="關閉" data-act="closeDone">${ic('x')}</button></div>
       <span class="xs">選一個任務</span>
@@ -684,7 +794,7 @@ function kidOverlays(d) {
       <button class="btn b-yellow" data-act="sendDone" ${s.doneSheet.task ? '' : 'disabled style="opacity:.5"'}>通知爸媽</button></div></div>`;
   if (s.approvalReq) return `<div class="overlay"><div class="sheet">
       <span class="h3" style="font-size:18px">這筆需要爸媽同意</span>
-      <div class="card c-gray"><span class="sm">提前領出${s.goal.name}</span><span class="mid">$300</span><span class="xs">從夢想基金領回可以用的錢</span></div>
+      <div class="card c-gray"><span class="sm">提前領出${s.goal.name}</span><span class="mid">$300</span><span class="xs">從夢想基金領回想要罐</span></div>
       <span class="xs">想說的話（選填）</span>
       <div class="chips">${['球鞋有特價，想先買便宜的', '想先買文具'].map((r, i) => `<button class="chip s ${s.approvalReq.reason === i ? 'on' : ''}" data-act="wReason" data-arg="${i}">${r}</button>`).join('')}</div>
       <button class="btn b-green" data-act="sendApproval" data-arg="withdraw">送出給爸媽</button>
@@ -743,6 +853,11 @@ function kidScene() {
 const parTitles = {overview:'小安的 MMA Kids', allowance:'零用錢', match:'配對設定', task:'任務', safety:'安全', trust:'小安成長信託', report:'任務回報', newTask:'新增任務'};
 function viewParent(d) {
   const s = state, v = s.parView;
+  if (s.setup) return `<div class="ph"><div class="scr">
+    <div class="top"><div class="col"><span class="app-n p">DAWHO › 親子 › 初次設定</span><span class="ttl">${s.setup === 'kid' ? '小安的 MMA Kids' : '設定零用錢與配對'}</span></div><div class="avatar p">媽</div></div>
+    ${parSetup()}
+    ${s.parToast ? `<div class="toast" role="status">${ic('bell')}<span>${esc(s.parToast)}</span></div>` : ''}
+  </div></div>`;
   const views = {overview:parOverview, allowance:parAllowance, match:parMatch, task:parTask, safety:parSafety, trust:parTrust, report:parReport, newTask:parNewTask};
   const tabOf = {trust:'overview', report:'task', newTask:'task'};
   const cur = tabOf[v] || v;
@@ -794,7 +909,7 @@ function parOverview(d) {
     ${todo.length ? `<div class="need-box"><span class="h3">需要你處理（${todo.length}）</span>${todo.join('')}</div>` : ''}
     <div class="card"><span class="h3">小安這週</span>
       <div class="stat3">
-        <div class="statbox" style="background:var(--greenBg)"><span class="xs">可以用的錢</span><b class="t-green">$${fmt(s.balance)}</b></div>
+        <div class="statbox" style="background:var(--greenBg)"><span class="xs">可以用的錢</span><b class="t-green">$${fmt(bal())}</b><span class="xs">需要 $${fmt(s.need)}・想要 $${fmt(s.want)}</span></div>
         <div class="statbox" style="background:var(--blueBg)"><span class="xs">${s.goal.name}</span><b class="t-blue">${d.progress}%</b></div>
         <div class="statbox" style="background:var(--pinkBg)"><span class="xs">選「存起來」</span><b class="t-pink">${s.saveCount} 次</b></div>
         <div class="statbox" style="background:var(--pinkBg)"><span class="xs">本週配對保留</span><b class="t-pink">$${fmt(s.match.heldThisWeek)}</b></div>
@@ -811,13 +926,17 @@ function parAllowance() {
   return `
     <div class="card"><div class="row sb"><span class="h3">固定給零用錢</span><button class="sw ${a.on ? 'on' : ''}" aria-pressed="${a.on}" aria-label="固定給零用錢" data-act="tAllowance"><span class="knob"></span></button></div>
       ${a.on ? `<span class="xs">每週金額</span>
-        <div class="chips">${[200, 300, 500].map(v => `<button class="chip ${a.amount === v ? 'on' : ''}" data-act="setAllow" data-arg="${v}">$${v}</button>`).join('')}</div>
-        <div class="lr"><span class="sm">轉帳時間</span><span class="sm">每週一 07:00</span></div>
+        <div class="chips">${ALLOW_OPTS.map(v => `<button class="chip ${a.amount === v ? 'on' : ''}" data-act="setAllow" data-arg="${v}">$${fmt(v)}</button>`).join('')}</div>
+        <span class="xs">轉帳時間</span>
+        <div class="chips">${DAY_OPTS.map(v => `<button class="chip s ${a.day === v ? 'on' : ''}" data-act="setDay" data-arg="${v}">${v}</button>`).join('')}</div>
+        <div class="chips">${TIME_OPTS.map(v => `<button class="chip s ${a.time === v ? 'on' : ''}" data-act="setTime" data-arg="${v}">${v}</button>`).join('')}</div>
         <div class="lr"><span class="sm">扣款帳戶</span><span class="sm">媽媽的 DAWHO</span></div>
+        ${(p => `<div class="card c-gray" style="padding:10px 12px"><span class="xs" style="font-weight:700">小安的三罐子（比例由小安設定）</span>
+          <span class="sm">儲蓄 $${fmt(p.save)}・需要 $${fmt(p.need)}・想要 $${fmt(p.want)}</span></div>`)(portions())}
         ${a.paused ? `<div class="banner gray">${ic('pause')}<span>零用錢暫停中（${a.pauseFor}）</span></div><button class="btn b-line" data-act="resumeAllow">恢復零用錢</button>`
           : `<button class="btn b-green" data-act="payNow">提前撥款</button>
              <span class="xs">暫停零用錢</span><div class="chips">${['2 週', '1 個月', '直到我恢復'].map(p => `<button class="chip s" data-act="pauseAllow" data-arg="${p}">${p}</button>`).join('')}</div>`}`
-        : '<span class="sm" style="line-height:1.6">不自動撥款。小安仍可用紅包、存款使用夢想基金，首頁不顯示「本週還能花」。</span>'}</div>
+        : '<span class="sm" style="line-height:1.6">不自動撥款。小安仍可用紅包、存款使用夢想基金。</span>'}</div>
     <div class="card"><span class="h3">家人名單</span><span class="xs" style="line-height:1.6">名單內的轉入（例如外婆的紅包）直接入帳，不會被「陌生入帳先保留」擋下。</span>
       ${s.family.map(f => `<div class="lr"><span class="row">${ic('users', 'width:16px;height:16px;color:var(--muted)')}${f}</span><span class="tag ok">已加入</span></div>`).join('')}</div>`;
 }
@@ -833,13 +952,16 @@ function parMatch(d) {
       <div class="seg3">${ratios.map(([r, l]) => `<button class="chip ${m.ratio === r ? 'on' : ''}" data-act="setRatio" data-arg="${r}">${l}</button>`).join('')}<button class="chip" data-act="customRatio">自訂</button></div>
       <span class="sm t-pink" style="font-weight:700">小安存 $1，你配 $${m.ratio}</span>
       <span class="xs">儲存後，比例在這個夢想期間不變</span></div>
-    <div class="card" style="gap:0">
-      <div class="lr"><span>每週配對上限</span><b>$${m.weekCap}</b></div>
-      <div class="lr"><span>這個夢想的配對上限</span><b>$${m.goalCap}</b></div>
-      <div class="lr"><span>本週已保留</span><b class="t-pink">$${m.heldThisWeek}${m.heldThisWeek >= m.weekCap ? '（已達上限）' : ''}</b></div>
+    <div class="card"><span class="h3">配對上限</span>
+      <span class="xs">每週最多配</span>
+      <div class="chips">${WEEKCAP_OPTS.map(v => `<button class="chip s ${m.weekCap === v ? 'on' : ''}" data-act="setWeekCap" data-arg="${v}">$${v}</button>`).join('')}</div>
+      <span class="xs">這個夢想最多配</span>
+      <div class="chips">${GOALCAP_OPTS.map(v => `<button class="chip s ${m.goalCap === v ? 'on' : ''}" data-act="setGoalCap" data-arg="${v}">$${v}</button>`).join('')}</div>
+      <div class="lr"><span>本週已保留</span><b class="t-pink">$${fmt(m.heldThisWeek)}${m.heldThisWeek >= m.weekCap ? '（已達上限）' : ''}</b></div>
       <div class="lr"><span>累計保留（圈存在你的帳戶）</span><b class="t-pink">$${fmt(heldAll())}</b></div></div>
     <div class="card"><span class="h3">哪些存款可以配對</span>
-      ${ck('saveAtPay', '付款前選「存起來」')}${ck('sundayLeft', '把零用錢剩下的存進夢想')}${ck('gift', '紅包、親友贈與')}</div>
+      ${ck('saveAtPay', '付款前選「存起來」')}${ck('sundayLeft', '把需要、想要罐剩下的存進夢想')}${ck('gift', '紅包、親友贈與')}
+      <span class="xs">零用錢自動存進儲蓄罐的部分不配對</span></div>
     <button class="btn b-pink" data-act="saveMatch">儲存配對規則</button>
     ${m.paused ? '<button class="btn b-line" data-act="resumeMatch">恢復配對</button>' : '<button class="btn b-line" data-act="openPause">暫停配對</button>'}
     <span class="xs" style="line-height:1.6">配對款先圈存在你自己的帳戶，達標當週結算後一次撥入小安的 MMA；上限到了就不再配對。</span>`;
@@ -946,14 +1068,12 @@ function goCh(id) {
   set(patch);
 }
 function creditAllowance(label) {
-  const s = state, a = s.allowance.amount;
-  const save = Math.round(a * s.jars[0] / 100), share = Math.round(a * s.jars[2] / 100), spend = a - save - share;
-  s.balance += spend; s.goal.saved += save; s.shareJar += share; s.weekSpent = 0;
-  const mom = matchFor(save, 'sundayLeft');
-  s.match.heldThisWeek += mom;
+  const s = state, a = s.allowance.amount, p = portions();
+  // 儲蓄份自動存進夢想，不產生配對（配對只給孩子主動存的錢）
+  s.goal.saved += p.save; s.need += p.need; s.want += p.want;
   s.tx.unshift({id:++seq, when:'今天', store:'家長零用錢', name:'零用錢入帳', amt:a, cat:'收入', income:true});
-  addFeed('save', `${label}零用錢 $${a}（儲蓄 $${save}・消費 $${spend}・分享 $${share}）`);
-  toast('kid', `零用錢 $${a} 入帳：$${save} 存進${s.goal.name}${mom ? `，媽媽陪你存 +$${mom}` : ''}`);
+  addFeed('save', `${label}零用錢 $${fmt(a)}（儲蓄 $${p.save}・需要 $${p.need}・想要 $${p.want}）`);
+  toast('kid', `零用錢 $${fmt(a)} 入帳：儲蓄 $${p.save}・需要 $${p.need}・想要 $${p.want}`);
   toast('par', `已撥款 $${a} 給小安`);
   checkGoal(); render();
 }
@@ -963,7 +1083,7 @@ function addApproval(type, title, amt, reason, who = 'kid', extra = {}) {
 }
 function doPay(m) {
   const s = state;
-  s.balance -= m.amt; s.weekSpent += m.amt;
+  take(m.amt, m.jar || 'want');
   const t = {id:++seq, when:'今天', store:m.store, name:m.name, amt:m.amt, cat:m.cat, tag:null, src:m.items ? 'carrier' : 'card', items:m.items};
   s.tx.unshift(t); s.pay = {...s.pay, step:'tag', txId:t.id};
   addFeed('spend', '', {store:m.store, amt:m.amt, items:m.items, tag:null, txId:t.id});
@@ -982,16 +1102,18 @@ const ACT = {
   payNow() { creditAllowance('提前撥款：'); },
   tAllowance() { const a = state.allowance; a.on = !a.on; a.paused = false; toast('kid', a.on ? '媽媽開啟了固定零用錢' : '媽媽調整了零用錢設定'); },
   setAllow(v) { state.allowance.amount = Number(v); render(); },
+  setDay(v) { state.allowance.day = v; render(); },
+  setTime(v) { state.allowance.time = v; render(); },
   pauseAllow(p) { Object.assign(state.allowance, {paused:true, pauseFor:p}); toast('par', `零用錢暫停（${p}）`); },
   resumeAllow() { Object.assign(state.allowance, {paused:false, pauseFor:''}); toast('par', '零用錢已恢復'); },
   grandma() {
-    const s = state; s.balance += 2000;
+    const s = state; s.want += 2000;   // 紅包先進想要罐，再問要不要存一部分到夢想
     s.tx.unshift({id:++seq, when:'今天', store:'外婆', name:'紅包', amt:2000, cat:'收入', income:true});
     s.bigIn = {amt:2000, from:'外婆'}; s.kidView = 'home';
     addFeed('save', '外婆轉入紅包 $2,000（家人名單，直接入帳）');
     toast('par', '外婆轉入 $2,000 給小安（家人名單）');
   },
-  bigSave(v) { const s = state, a = Number(v); s.balance -= a; s.goal.saved += a; const mom = matchFor(a, 'gift'); s.match.heldThisWeek += mom; s.bigIn = null;
+  bigSave(v) { const s = state, a = Number(v); take(a, 'want'); s.goal.saved += a; const mom = matchFor(a, 'gift'); s.match.heldThisWeek += mom; s.bigIn = null;
     addFeed('save', `小安把紅包 $${a} 存進${s.goal.name}`); toast('kid', `存進${s.goal.name} $${a}${mom ? `，媽媽陪你存 $${mom}` : ''}`); checkGoal(); render(); },
   bigSkip() { set({bigIn:null}); },
 
@@ -1003,18 +1125,19 @@ const ACT = {
     const blocked = m.cat === '遊戲儲值' && s.blocked.game;
     if (blocked) { s.pay = {step:'blocked', m}; addFeed('security', `小安嘗試在遊戲平台付款 $${m.amt}，已依封鎖設定攔下`); render(); return; }
     if (m.amt >= s.threshold) { s.pay = {step:'approval', m, reason:null}; render(); return; }
-    if (m.amt > s.balance) { s.pay = {step:'code', m:null}; toast('kid', '可以用的錢不夠喔'); return; }
-    const weekLeft = Math.max(0, s.budget - s.weekSpent);
-    const remind = s.remindToday < MAX_REMIND && ((REMIND_CATS.includes(m.cat) && m.amt >= 50) || m.amt >= weekLeft / 2) && !s.goalReady;
-    s.pay = {step:remind ? 'choice' : 'confirm', m};
+    if (m.amt > bal()) { s.pay = {step:'code', m:null}; toast('kid', '需要罐和想要罐加起來也不夠喔'); return; }
+    // 「買下去／存起來」只在花想要罐、金額 ≥ $50 時跳出
+    const remind = s.remindToday < MAX_REMIND && m.jar === 'want' && m.amt >= 50 && m.amt <= s.want && !s.goalReady;
+    s.pay = {step:remind ? 'choice' : m.amt > s[m.jar] ? 'borrow' : 'confirm', m};
     if (remind) s.remindToday++;
     render();
   },
   payReason(i) { state.pay.reason = Number(i); render(); },
   payBuy() { doPay(state.pay.m); render(); },
+  payBorrow() { const m = state.pay.m; toast('kid', `用${JAR_INFO[m.jar === 'want' ? 'need' : 'want'].t}罐補了 $${fmt(m.amt - state[m.jar])}`); doPay(m); render(); },
   paySave() {
     const s = state, m = s.pay.m, mom = matchFor(m.amt, 'saveAtPay');
-    s.balance -= m.amt; s.goal.saved += m.amt; s.match.heldThisWeek += mom; s.saveCount++;
+    take(m.amt, m.jar); s.goal.saved += m.amt; s.match.heldThisWeek += mom; s.saveCount++;
     s.pay = null; s.kidView = 'home';
     addFeed('save', `小安選了「存起來」：$${m.amt} 存進${s.goal.name}${mom ? `，配對保留 $${mom}` : ''}`);
     toast('kid', `存進${s.goal.name} $${m.amt}${mom ? `，媽媽陪你存 $${mom}` : ''}`);
@@ -1027,38 +1150,63 @@ const ACT = {
   },
 
   // 錢包
-  walletTab(t) { set({walletTab:t}); },
+  walletTab(t) { set({walletTab:t, jarDraft:null}); },
   openTx(id) { set({openTx:state.openTx === Number(id) ? null : Number(id)}); },
   retag(arg) { const [id, tag] = arg.split('|'); const t = state.tx.find(x => x.id === Number(id)); t.tag = tag; render(); },
   manualAdd() {
-    const s = state; s.balance = Math.max(0, s.balance - 70); s.weekSpent += 70;
+    const s = state; take(Math.min(70, bal()), 'want');
     const t = {id:++seq, when:'今天', store:'夜市', name:'雞排', amt:70, cat:'飲食', tag:null, src:'manual'};
     s.tx.unshift(t); s.openTx = t.id;
     addFeed('spend', '', {store:'夜市', amt:70, items:null, tag:null});
     toast('kid', '已手動補記：夜市雞排 $70，記得標記需要或想要');
   },
   review(id) { state.reviewPick = Number(id); const t = state.tx.find(x => x.id === Number(id)); addFeed('review', `小安的每週回顧：最值得的一筆是「${t.name}」`); toast('par', '小安完成每週回顧'); },
-  setJars(i) { state.jars = JAR_PRESETS[Number(i)].slice(); toast('kid', '三罐子比例已更新，下次零用錢入帳時套用'); },
-  setBudget(b) { state.budget = Number(b); render(); },
+  // 三罐子比例（草稿 jarDraft，按儲存或開始使用才生效）
+  jarStep(arg) {
+    const [i, d] = arg.split('|').map(Number), dr = (state.jarDraft || state.jars).slice();
+    dr[i] = Math.max(0, Math.min(100, dr[i] + d)); set({jarDraft:dr});
+  },
+  jarPreset(i) { set({jarDraft:JAR_PRESETS[Number(i)].slice()}); },
+  saveJars() {
+    const dr = state.jarDraft; if (!dr || dr[0] + dr[1] + dr[2] !== 100) return;
+    state.jars = dr.slice(); state.jarDraft = null;
+    addFeed('save', `小安調整三罐子比例：儲蓄 ${dr[0]}%・需要 ${dr[1]}%・想要 ${dr[2]}%`);
+    toast('kid', '三罐子比例已更新，下次零用錢入帳時套用');
+  },
+
+  // 初次設定
+  parSetupDone() { set({setup:'kid', jarDraft:null}); toast('kid', `媽媽設定好了！每週 $${fmt(state.allowance.amount)}，換你分配罐子`); },
+  setupBack() { set({setup:'parent'}); },
+  kidSetupDone() {
+    const s = state, dr = s.jarDraft || s.jars; if (dr[0] + dr[1] + dr[2] !== 100) return;
+    s.jars = dr.slice(); s.jarDraft = null; s.setup = null; s.kidView = 'home'; s.parView = 'overview';
+    fillWeek(s);
+    const p = portions();
+    addFeed('save', `小安完成設定：每週儲蓄 $${p.save}・需要 $${p.need}・想要 $${p.want}`);
+    toast('kid', '設定完成！零用錢會照你的比例分進三個罐子');
+    toast('par', '小安完成設定，MMA Kids 開始使用');
+  },
+  restart() { Object.values(timers).forEach(clearTimeout); state = initState(); render(); },
 
   // 夢想基金
-  openDeposit(src) { const s = state; set({deposit:{amt:s.balance >= 100 ? 100 : 50, src:src || 'sundayLeft'}}); },
+  openDeposit(src) { set({deposit:{amt:bal() >= 100 ? 100 : 50, src:src || 'sundayLeft'}}); },
   closeDeposit() { set({deposit:null}); },
   depAmt(a) { state.deposit.amt = Number(a); render(); },
   depSrc(k) { state.deposit.src = k; render(); },
   doDeposit() {
-    const s = state, dp = s.deposit; if (dp.amt > s.balance) return;
+    const s = state, dp = s.deposit; if (dp.amt > bal()) return;
     const mk = dp.src === 'family' ? 'gift' : dp.src === 'other' ? null : dp.src;
     const mom = matchFor(dp.amt, mk);
-    s.balance -= dp.amt; s.goal.saved += dp.amt; s.match.heldThisWeek += mom; s.deposit = null;
+    take(dp.amt, 'want'); s.goal.saved += dp.amt; s.match.heldThisWeek += mom; s.deposit = null;
     if (dp.src === 'gift' || dp.src === 'family') s.bigIn = null;
     addFeed('save', `小安存進${s.goal.name} $${dp.amt}${mom ? `，配對保留 $${mom}` : ''}`);
     toast('kid', `存進 $${dp.amt}${mom ? `，媽媽陪你存 $${mom}` : ''}`);
     checkGoal(); render();
   },
   ffGoal() {
-    const s = state; s.goal.saved = 1250; s.match.heldTotal = 450; s.match.heldThisWeek = 0; s.goalReady = false; s.match.paused = false;
-    s.balance = Math.max(s.balance, 200); s.kidView = 'dream';
+    const s = state, cap = Math.min(s.match.goalCap, s.goal.target / 2);
+    s.match.heldTotal = Math.max(0, cap - 50); s.match.heldThisWeek = 0; s.goal.saved = s.goal.target - s.match.heldTotal - 100;
+    s.goalReady = false; s.match.paused = false; s.want = Math.max(s.want, 200); s.kidView = 'dream';
     toast('kid', '（快轉）再存一筆 $50 就達標了！'); },
   sunday() {
     const s = state, m = s.match;
@@ -1066,7 +1214,7 @@ const ACT = {
     if (s.goalReady) {
       const mom = m.heldTotal, me = s.goal.saved;
       s.celebrate = {name:s.goal.name, target:s.goal.target, me, mom};
-      s.balance += me + mom; m.heldTotal = 0; s.goalsDone++; s.kidView = 'dream';
+      s.want += me + mom; m.heldTotal = 0; s.goalsDone++; s.kidView = 'dream';   // 夢想達成：整筆錢可以拿去買夢想
       addFeed('goal', `週日結算：小安的「${s.goal.name}」達成，配對 $${mom} 已撥入`);
       toast('par', `週日結算完成，$${mom} 已撥入小安的 MMA`);
     } else { toast('par', '週日結算完成：本週配對已確認保留'); }
@@ -1093,15 +1241,15 @@ const ACT = {
   approveYes(id) {
     const s = state, a = s.approvals.find(x => x.id === Number(id)); a.status = 'ok';
     if (a.type === 'withdraw') {
-      const amt = Math.min(a.amt, s.goal.saved); s.goal.saved -= amt; s.balance += amt;
+      const amt = Math.min(a.amt, s.goal.saved); s.goal.saved -= amt; s.want += amt;
       const cut = Math.min(heldAll(), Math.round(amt * s.match.ratio));
       const fromWeek = Math.min(s.match.heldThisWeek, cut); s.match.heldThisWeek -= fromWeek; s.match.heldTotal -= cut - fromWeek;
-      toast('kid', `爸媽同意了！$${amt} 已領回可以用的錢${cut ? `，媽媽保留的配對也減少 $${cut}` : ''}`);
+      toast('kid', `爸媽同意了！$${amt} 已領回想要罐${cut ? `，媽媽保留的配對也減少 $${cut}` : ''}`);
     } else if (a.type === 'big') {
-      if (a.m.amt > s.balance) { a.status = 'no'; toast('kid', '可以用的錢不夠，這筆已取消'); toast('par', '餘額不足，已取消'); return; }
+      if (a.m.amt > bal()) { a.status = 'no'; toast('kid', '需要罐和想要罐加起來不夠，這筆已取消'); toast('par', '餘額不足，已取消'); return; }
       s.pay = {step:'tag', m:a.m}; s.kidView = 'pay'; doPay(a.m); toast('kid', '爸媽同意了！付款完成');
     } else if (a.type === 'payee') {
-      s.balance = Math.max(0, s.balance - a.amt); toast('kid', '爸媽同意了，已轉帳');
+      take(Math.min(a.amt, bal()), 'want'); toast('kid', '爸媽同意了，已轉帳');
       addAlert('security', '你同意了一筆轉給新收款人的轉帳', '若對方是網路上不認識的買家，請留意假買家詐騙。');
     }
     toast('par', '已同意');
@@ -1111,6 +1259,8 @@ const ACT = {
 
   // 配對（家長）
   setRatio(r) { state.match.ratio = Number(r); render(); },
+  setWeekCap(v) { state.match.weekCap = Number(v); render(); },
+  setGoalCap(v) { state.match.goalCap = Number(v); render(); },
   customRatio() { toast('par', '自訂比例：正式版可輸入任意比例'); },
   tSource(k) { state.match.sources[k] = !state.match.sources[k]; render(); },
   saveMatch() { toast('par', '配對規則已儲存'); },
@@ -1223,10 +1373,10 @@ const ACT = {
   fakeContinue() {
     const s = state; s.scene = null;
     if (s.newPayee) { addApproval('payee', '小安想轉 $300 給新的收款人（二手平台買家）', 300, '', 'kid'); toast('kid', '第一次轉帳給這個帳戶，需要爸媽同意'); }
-    else { s.balance = Math.max(0, s.balance - 300); toast('kid', '已轉帳 $300'); }
+    else { take(Math.min(300, bal()), 'want'); toast('kid', '已轉帳 $300'); }
     render();
   },
-  heldOk() { const s = state; s.balance += s.heldIncoming.amt; s.heldIncoming = null; toast('kid', '爸媽確認了，款項已入帳'); },
+  heldOk() { const s = state; s.want += s.heldIncoming.amt; s.heldIncoming = null; toast('kid', '爸媽確認了，款項已入帳'); },
   heldReturn() { set({heldIncoming:null}); toast('kid', '這筆陌生轉入已退回並通報'); toast('par', '已退回並通報永豐'); },
 
   // 查看程度與安全設定
@@ -1249,7 +1399,7 @@ function render() {
   app.querySelectorAll('[data-sk]').forEach(el => { scrolls[el.dataset.sk] = el.scrollTop; });
   const d = derive();
   app.innerHTML = `<div class="phonecol"><div class="lbl-phone">孩子端・小安的手機（${state.grown ? 18 : state.age} 歲）</div>${viewKid(d)}</div>
-    <div class="phonecol"><div class="lbl-phone">家長端・媽媽的手機</div>${viewParent(d)}</div>`;
+    <div class="phonecol"><div class="lbl-row"><span class="lbl-phone">家長端・媽媽的手機</span>${state.setup ? '' : '<button class="minibtn" data-act="restart">重新設定（示範）</button>'}</div>${viewParent(d)}</div>`;
   app.querySelectorAll('[data-sk]').forEach(el => { if (scrolls[el.dataset.sk]) el.scrollTop = scrolls[el.dataset.sk]; });
 }
 app.addEventListener('click', e => {
